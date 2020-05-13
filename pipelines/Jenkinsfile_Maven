@@ -34,7 +34,7 @@ pipeline {
       steps{
         container('maven'){
           script{
-            sh ('mvn dependency:tree -DoutputType=graphml -DoutputFile=out.gml')
+            sh (returnStdout: true, label: "[Writting dependency tree", script: "mvn dependency:tree -DoutputType=graphml -DoutputFile=out.gml")
           }
         }
       }
