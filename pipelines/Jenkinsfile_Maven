@@ -10,7 +10,7 @@ pipeline {
     kind: Pod
     metadata:
       labels:
-        some-label: some-label-value
+        name: node-pod
     spec:
       containers:
       - name: maven

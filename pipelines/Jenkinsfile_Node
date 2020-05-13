@@ -1,283 +1,53 @@
 #!groovy
 @Library('pipeline-as-code') _
 
-def context = this
-
 pipeline {
-    agent {
-        kubernetes {
-            label 'maven-pipeline-with-kiuwan'
-            defaultContainer 'jnlp'
-            activeDeadlineSeconds '600'
-            yaml """
-                    apiVersion: v1
-                    kind: Pod
-                    metadata:
-                    labels:
-                    spec:
-                      imagePullSecrets:
-                      - name: regcred-webpre
-                      nodeSelector:
-                        jenkins-slave: "true"      
-                      containers:
-                      - name: maven
-                        image: webpre-adm.es.sedc.internal.vodafone.com:44150/devops/vf-maven-slave:3.6-jdk-8-alpine
-                        volumeMounts:
-                        - name: maven-settings
-                          mountPath: /usr/share/maven/conf/settings.xml
-                          subPath: settings.xml
-                        workingDir: /home/jenkins/agent
-                        imagePullPolicy: Always
-                        command:
-                        - cat
-                        tty: true
-                      - name: kiuwan
-                        image: webpre-adm.es.sedc.internal.vodafone.com:44150/devops/vf-kiuwan-slave:0.1
-                        volumeMounts:
-                        - name: kiuwan-settings
-                          mountPath: /tmp/agent.properties
-                          subPath: agent.properties
-                        workingDir: /home/jenkins/agent
-                        imagePullPolicy: Always
-                        command:
-                        - cat
-                        tty: true
-                      - name: python3
-                        image: webpre-adm.es.sedc.internal.vodafone.com:44150/devops/vf-python3-slave:latest
-                        command:
-                        - cat
-                        tty: true
-                      volumes:
-                      - name: maven-settings
-                        configMap:
-                          name: maven-settings
-                      - name: kiuwan-settings
-                        configMap:
-                          name: kiuwan-settings
-                """
-        }
+  agent {
+    kubernetes {
+    label 'node-pipeline-pod'
+    yaml """
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      labels:
+        name: node-pod
+    spec:
+      containers:
+      - name: node
+        image: node:14.2.0-stretch-slim
+        command:
+        - cat
+        tty: true
+      - name: python
+        image: python:3-slim
+        command:
+        - cat
+        tty: true
+    """
     }
-
-    options {
-        timeout(time: 1, unit: 'HOURS') 
-        disableConcurrentBuilds()
+  }
+  environment {
+     FOO = "foo"
+  }
+  stages {
+    stage("Node Tree") {
+      steps{
+        container('node'){
+          script{
+            sh (returnStdout: true, label: "[Writting dependency tree", script: "npm -json list > outfile.json")
+          }
+        }
+      }
     }
-
-    environment {            
-        KIUWAN_APPNAME = "${env.GIT_URL.tokenize('/')[-1].replace('.git', '')}"
-        KIUWAN_LABEL = "${env.GIT_COMMIT}" //Commit ID
-        branch = "${env.GIT_BRANCH}"
-        typeBranch =  getTypeBranch(branch)
-        tagBranch =  getIdBranch(branch)
-        KIUWAN_CREDENTIALS_ID = "kiuwan-credentials"
-        KIUWAN_MODEL = "VFES - Digital Model"
-        KIUWAN_PATH = '/home/kiuwan/KiuwanLocalAnalyzer/bin/agent.sh'
-        DATE = date()
-        CHANGE_REQUEST = "$KIUWAN_APPNAME#$DATE"
-        kiuwanHost = "https://kiuwan.es.sedc.internal.vodafone.com/saas"
-        sonarProject = "${env.GIT_URL.tokenize('/')[-1].replace('.git', '')}"
-        sonarKey = "${(env.GIT_URL =~ /\w{3,}-\w{3,}\/([a-zA-Z-]*).git/)[ 0 ][ 1 ]}"
-        bitbucketKey = "${(env.GIT_URL =~ /(\w{3,}-\w{3,})\/[a-zA-Z-]*.git/)[ 0 ][ 1 ]}"
-        bitbucketRepoName = "${env.GIT_URL.tokenize('/')[-1].replace('.git', '')}"
-        sonarHost = "https://webpre-adm.es.sedc.internal.vodafone.com:44099/sonar"
-        slackChannel = "es-cicd-reports-${bitbucketKey.toLowerCase()}"
-        BITBUCKETAPIURL = "https://webpre-adm.es.sedc.internal.vodafone.com:42520/bitbucket/rest/api"
-    }   
-
-    stages {
-        stage("Manage Config") {
-            when {
-                not {
-                    environment name: 'SKIP_CONFIG_LOOP', value: 'true'
-                }
-            }
-            steps {
-                script {
-                    sh """
-                            for fich in \$(find . -type f -name '*.AUX12')
-                            do
-                                newf=\$(echo \${fich} | sed 's/.AUX12//')
-                                echo copiando \${fich} \${newf}
-                                cp \${fich} \${newf}; 
-                            done
-                            """
-                }
-            }
+    stage("Upload ArangoDB"){
+      steps{
+        container('python'){
+          script{
+	    configurePython()
+            sh 'python python-utils/node_arango.py'
+          }
         }
-        stage("Check config") {
-            steps {
-                container("maven") {
-                    script {
-                       env.switchUT = checkUnitTest(BITBUCKETAPIURL,bitbucketKey,bitbucketRepoName)
-                    }
-                }
-            }
-        }
-        stage("Build") {
-            steps {
-                container("maven") {
-                    script {
-                        maven.CheckMultiModuleProject(context)
-                        maven.Build(versionPre: "${env.VERSION_PRE}", releaseCandidate: "${env.RELEASE_CANDIDATE}")
-                    }
-                }
-            }
-        }
-        stage("Test") {
-            when {
-              environment name: 'switchUT', value: 'true'
-            }
-            steps {
-                container("maven") {
-                    script {
-                        sh 'mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent install'
-                        maven.Test()
-
-                    }
-                }
-            }
-        }
-         stage("JaCoCo") {
-            when {
-              environment name: 'switchUT', value: 'true'
-            }
-             steps {
-                 container("maven") {
-                     script {
-                         maven.Jacoco()
-                     }
-                 }
-             }
-         }
-        stage("Package") {
-            steps {
-                container("maven") {
-                    script {
-                        maven.Package()
-                    }
-                }
-            }
-        }
-
-        stage("Generate Kiuwan Reports") {
-       		steps {
-       			container('python3') {
-              withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'syncReposBitBucket', usernameVariable: 'USERNAME',
-                passwordVariable: 'PASSWORD']]) {
-                script{
-                      if (!fileExists('idg-didi-kiuwan-utils')) {
-                          sh 'git clone https://$USERNAME:$PASSWORD@webpre-adm.es.sedc.internal.vodafone.com:42520/bitbucket/scm/idg-didi/idg-didi-kiuwan-utils.git'
-                      }
-                      sh 'pip install -r idg-didi-kiuwan-utils/requirements.txt'
-                      def lines = sh(script: "python3 -u idg-didi-kiuwan-utils/generate_reports_delivery.py --dir_jacoco=$env.DIR_JACOCO",
-                            returnStdout: true).split("\r?\n")
-                      lines.each { echo "$it"}
-                	}
-                  }
-       		   }
-       		}  
-         }
-        
-        stage("Kiuwan Analysis") {
-            steps {
-                container('kiuwan') {
-                    script {
-                        def obj = [
-                            typeBranch:         typeBranch,
-							tagBranch:			tagBranch,
-                            changeReq:           CHANGE_REQUEST,
-                            kiuwanCredentials:  KIUWAN_CREDENTIALS_ID,
-                            kiuwanAppName:      KIUWAN_APPNAME,
-                            kiuwanModel:        KIUWAN_MODEL,
-                            kiuwanLabel:        KIUWAN_LABEL,
-                            saveUTReports:      env.switchUT,
-                            kiuwanPath:         KIUWAN_PATH
-                        ]   
-                        sh 'cp /tmp/agent.properties /home/kiuwan/KiuwanLocalAnalyzer/conf'
-                        kiuwanAnalysis(obj)
-                    }
-                }
-            }
-        }
-
-
-        stage("Sonarqube Coverage Analysis") {
-            when {
-                branch "feature/*devops-coverage*"
-            }
-            steps {
-                container('maven') {
-                    script {
-                        sonar.Maven(sonarKey: "${env.sonarKey}", gitBranch: "master")
-                        sonar.QualityGate(minutes: 10)
-                    }
-                }
-            }
-        }
-
-        stage("Sonarqube Analysis") {
-            when {
-                not { branch "feature/*devops-coverage*"};
-            }
-            steps {
-                container('maven') {
-                    script {
-                        def devopsCoverageBranch = sh script: "git branch -r | grep devops-coverage &> /dev/null", returnStatus: true
-                        def sonarBranch = env.GIT_BRANCH
-                        if (env.GIT_BRANCH == "master" && devopsCoverageBranch == 0)
-                            sonarBranch = "true-master"
-                        sonar.Maven(sonarKey: "${env.sonarKey}", gitBranch: "${sonarBranch}")
-                        sonar.QualityGate(minutes: 10)
-                    }
-                }
-            }
-        }
-
-        stage("Deploy to Nexus") {
-            // when branch is not feature
-            when { 
-                not {
-                    branch "feature/*"
-                }
-            }
-            steps {
-                container('maven') {
-                    script {
-                        maven.Deploy()
-                    }
-                }
-            }
-        }
+      }
     }
-    
-    post {
-        success {
-            script{
-                if (env.typeBranch == 'master'){
-                	if(env.foundDelivery == 1){
-                      echo "Jenkins reports: The job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' has been successful  (<${env.BUILD_URL}|View Build>).\nQuality Analysis available ${env.analysisURL}"
-                      slackSend (channel: "${env.slackChannel}", color: '#00FF00', message: "Jenkins reports: The job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' has been successful  (<${env.BUILD_URL}|View Build>).\nNew Baseline available <${env.analysisURL}|here>")
-                    }else{
-                      echo "Jenkins reports: The job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' has been successful  (<${env.BUILD_URL}|View Build>).\nQuality Analysis available ${env.analysisURL}"
-                      slackSend (channel: "${env.slackChannel}", color: '#00FF00', message: "Jenkins reports: The job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' has been successful  (<${env.BUILD_URL}|View Build>).\nFailed to promote, new baseline available <${env.analysisURL}|here>")
-                    }
-                }else{
-                    echo "Jenkins reports: The job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' has been successful  (<${env.BUILD_URL}|View Build>).\nQuality Analysis available ${env.analysisURL}"
-                    slackSend (channel: "${env.slackChannel}", color: '#00FF00', message: "Jenkins reports: The job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' has been successful  (<${env.BUILD_URL}|View Build>).\nQuality Analysis available <${env.analysisURL}|here>")
-                }
-            }
-            cleanWs()
-        }
-        failure {
-            echo "BUILD FAILED"
-            script{
-                if (env.FAILED_STAGE == "Kiuwan Analysis")
-                    env.slackMessage="Jenkins reports: The job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' has failed at the quality analysis.  (<${env.BUILD_URL}|View Build>) \nQuality Analysis available ${env.analysisURL}"
-                else
-                    env.slackMessage="Jenkins reports: The job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' has failed. (<${env.BUILD_URL}|View Build>)"
-            }
-            slackSend (channel: "${env.slackChannel}", color: '#FF0000', message: "${env.slackMessage}")
-
-        }
-    }
+  }
 }
