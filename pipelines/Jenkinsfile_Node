@@ -47,7 +47,8 @@ pipeline {
           }
         }
       }
-    }    stage("Upload ArangoDB"){
+    }    
+	stage("Upload ArangoDB"){
       steps{
         container('python'){
           script{
