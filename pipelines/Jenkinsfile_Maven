@@ -34,21 +34,20 @@ pipeline {
       steps{
         container('maven'){
           script{
-            sh 'mvn dependency:tree -DoutputType=graphml -DoutputFile=out.gml'
+            sh ('mvn dependency:tree -DoutputType=graphml -DoutputFile=out.gml')
           }
         }
       }
     }
-	stage("Upload ArangoDB"){
+    stage("Upload ArangoDB"){
       steps{
         container('python'){
           script{
-		    setup-python()
-			echo 'Python container ready to connect to DB...'
+	    configurePython()
             sh 'python python-utils/maven_arango.py'
           }
         }
       }
-	}
+    }
   }
 }
