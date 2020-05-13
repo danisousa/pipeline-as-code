@@ -1,0 +1,45 @@
+#!groovy
+@Library('pipeline-as-code') _
+
+pipeline {
+  agent {
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    some-label: some-label-value
+spec:
+  containers:
+  - name: maven
+    image: maven:3-alpine
+    command:
+    - cat
+    tty: true
+"""
+    }
+  }
+  stages {
+      stage('Checkout'){
+          steps {
+            checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'gitea-admin', url: 'http://192.168.56.172:31474/administrador/test-app.git']]])
+          }
+      }
+      stage('Sonarqube') {
+        environment {
+            scannerHome = tool 'SonarScanner'
+        }
+        steps {
+            container('maven'){
+                withSonarQubeEnv('SonarQube') {
+                    sh "${scannerHome}/bin/sonar-scanner"
+                }
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+    }
+  }
+}
