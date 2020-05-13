@@ -30,6 +30,15 @@ pipeline {
      FOO = "foo"
   }
   stages {
+    stage("Install") {
+      steps{
+        container('node'){
+          script{
+            sh (returnStdout: true, label: "Installing dependencies", script: "npm install")
+          }
+        }
+      }
+    }
     stage("Node Tree") {
       steps{
         container('node'){
@@ -38,8 +47,7 @@ pipeline {
           }
         }
       }
-    }
-    stage("Upload ArangoDB"){
+    }    stage("Upload ArangoDB"){
       steps{
         container('python'){
           script{
