@@ -43,10 +43,8 @@ pipeline {
       steps{
         container('python'){
           script{
-            sh 'apt-get update'
-            sh 'apt-get install -y --no-install-recommends git'
-            sh 'git clone https://github.com/danisousa/python-utils.git'
-            sh 'pip install -r python-utils/requirements.txt'
+		    setup-python()
+			echo 'Python container ready to connect to DB...'
             sh 'python python-utils/maven_arango.py'
           }
         }
