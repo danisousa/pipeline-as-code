@@ -34,6 +34,10 @@ pipeline {
       steps{
         container('maven'){
           script{
+		    @echo off
+            echo GIT_COMMIT %GIT_COMMIT% 
+            echo GIT_BRANCH %GIT_BRANCH%
+            echo GIT_URL %GIT_URL%
             sh (returnStdout: true, label: "[Writting dependency tree", script: "mvn dependency:tree -DoutputType=graphml -DoutputFile=out.gml")
           }
         }
