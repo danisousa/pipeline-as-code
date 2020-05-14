@@ -27,7 +27,8 @@ pipeline {
     }
   }
   environment {
-     FOO = "foo"
+    REPO_NAME = "${env.GIT_URL.tokenize('/')[-1].replace('.git', '')}"
+    BRANCH = "${env.GIT_BRANCH}"  
   }
   stages {
     stage("Install") {

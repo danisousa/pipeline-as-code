@@ -28,7 +28,7 @@ pipeline {
   }
   environment {
     REPO_NAME = "${env.GIT_URL.tokenize('/')[-1].replace('.git', '')}"
-    branch = "${env.GIT_BRANCH}"  
+    BRANCH = "${env.GIT_BRANCH}"  
   }
   stages {
     stage("Maven Tree") {
