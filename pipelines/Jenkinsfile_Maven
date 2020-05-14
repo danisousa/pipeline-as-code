@@ -44,11 +44,20 @@ pipeline {
       steps{
         container('python'){
           script{
-	    configurePython()
+	        configurePython()
             sh 'python python-utils/maven_arango.py'
           }
         }
       }
     }
+    stage("Check"){
+      steps{
+        container('python'){
+          script{
+	        checkDependencies()
+          }
+        }
+      }
+    }	
   }
 }
