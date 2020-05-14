@@ -27,17 +27,15 @@ pipeline {
     }
   }
   environment {
-     FOO = "foo"
+    REPO_NAME = "${env.GIT_URL.tokenize('/')[-1].replace('.git', '')}"
+    branch = "${env.GIT_BRANCH}"  
   }
   stages {
     stage("Maven Tree") {
       steps{
         container('maven'){
           script{
-		    @echo off
-            echo GIT_COMMIT %GIT_COMMIT% 
-            echo GIT_BRANCH %GIT_BRANCH%
-            echo GIT_URL %GIT_URL%
+            echo "${env.branch}"
             sh (returnStdout: true, label: "[Writting dependency tree", script: "mvn dependency:tree -DoutputType=graphml -DoutputFile=out.gml")
           }
         }
