@@ -35,7 +35,6 @@ pipeline {
       steps{
         container('maven'){
           script{
-            echo "${env.branch}"
             sh (returnStdout: true, label: "[Writting dependency tree", script: "mvn dependency:tree -DoutputType=graphml -DoutputFile=out.gml")
           }
         }
