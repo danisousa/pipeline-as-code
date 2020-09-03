@@ -40,15 +40,6 @@ pipeline {
         }
       }
     }
-    stage("Sonar Analysis") {
-      steps{
-        script{
-          withSonarQubeEnv('SonarQube'){
-            sh "mvn sonar:sonar"
-          }
-        }      
-      }
-    }
     stage("Upload ArangoDB"){
       steps{
         container('python'){
